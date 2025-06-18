@@ -29,6 +29,7 @@ def match_face_multi(current_encoding, multi_encodings_dict, tolerance=0.53):
             return name
     return "Unknown"
 
+
 def get_button(window, text, color, command, fg='white'):
     return tk.Button(
         window, text=text, fg=fg, bg=color,
@@ -55,7 +56,11 @@ def get_entry_text(window):
 def msg_box(title, description):
     messagebox.showinfo(title, description)
 
+
 def recognize(frame, db_dir, known_encodings=None, known_names=None, use_multi_encodings=False):
+    """
+    FIXED VERSION - keeping original logic but with 5-pose support
+    """
     rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
     face_locations = face_recognition.face_locations(rgb_frame)
     if len(face_locations) == 0:
@@ -70,50 +75,65 @@ def recognize(frame, db_dir, known_encodings=None, known_names=None, use_multi_e
     encoding = face_encodings[0]
 
     if use_multi_encodings:
-        all_encodings = []
-        all_names = []
+        # Load multi-encodings for better accuracy during timer checks
+        multi_encodings_dict = {}
+
         for user in os.listdir(db_dir):
             user_path = os.path.join(db_dir, user)
             if not os.path.isdir(user_path):
                 continue
-            for file in os.listdir(user_path):
-                if file.endswith('.pkl') and file != 'avg_encoding.pkl':
-                    file_path = os.path.join(user_path, file)
-                    try:
-                        with open(file_path, 'rb') as f:
-                            enc = pickle.load(f)
-                            all_encodings.append(enc)
-                            all_names.append(user)
-                    except:
-                        continue
 
-        if not all_encodings:
-            return 'unknown_person', None
+            # Load multi_encodings.pkl (contains 5 poses)
+            multi_path = os.path.join(user_path, 'multi_encodings.pkl')
+            if os.path.exists(multi_path):
+                try:
+                    with open(multi_path, 'rb') as f:
+                        encodings = pickle.load(f)
+                        multi_encodings_dict[user] = encodings
+                except:
+                    pass
 
-        matches = face_recognition.compare_faces(all_encodings, encoding, tolerance=0.53)
-        if np.any(matches):
-            matched_idx = np.argmax(matches)
-            matched_user = all_names[matched_idx]
+        # Find match using multi encodings
+        matched_user = match_face_multi(encoding, multi_encodings_dict, tolerance=0.5)
+
+        if matched_user != "Unknown":
+            # Get emp_id
             users_file = os.path.join(db_dir, 'users.json')
-            with open(users_file, 'r') as f:
-                users_data = json.load(f)
-            return matched_user, users_data.get(matched_user, "N/A")
+            try:
+                with open(users_file, 'r') as f:
+                    users_data = json.load(f)
+                emp_id = users_data.get(matched_user, "N/A")
+            except:
+                emp_id = "N/A"
+            return matched_user, emp_id
         else:
             return 'unknown_person', None
 
     else:
+        # Original single encoding logic for login/logout
+        if not known_encodings:
+            return 'unknown_person', None
+
         matches = face_recognition.compare_faces(known_encodings, encoding, tolerance=0.43)
         if np.any(matches):
             matched_idx = matches.index(True)
             matched_user = known_names[matched_idx]
             users_file = os.path.join(db_dir, 'users.json')
-            with open(users_file, 'r') as f:
-                users_data = json.load(f)
-            return matched_user, users_data.get(matched_user, "N/A")
+            try:
+                with open(users_file, 'r') as f:
+                    users_data = json.load(f)
+                emp_id = users_data.get(matched_user, "N/A")
+            except:
+                emp_id = "N/A"
+            return matched_user, emp_id
         else:
             return 'unknown_person', None
 
+
 def load_known_faces(db_path):
+    """
+    Enhanced to load both average and multi encodings
+    """
     known_avg_encodings = []
     known_names = []
     multi_encodings_dict = {}
@@ -123,31 +143,25 @@ def load_known_faces(db_path):
         if not os.path.isdir(user_path):
             continue
 
+        # Load average encoding (for login/logout)
         encoding_path = os.path.join(user_path, 'avg_encoding.pkl')
         if os.path.exists(encoding_path):
-            with open(encoding_path, 'rb') as f:
-                avg_encoding = pickle.load(f)
-                known_avg_encodings.append(avg_encoding)
-                known_names.append(user_folder)
+            try:
+                with open(encoding_path, 'rb') as f:
+                    avg_encoding = pickle.load(f)
+                    known_avg_encodings.append(avg_encoding)
+                    known_names.append(user_folder)
+            except:
+                pass
 
-        # Load multi-encodings
+        # Load multi-encodings (for timer accuracy)
         multi_path = os.path.join(user_path, 'multi_encodings.pkl')
         if os.path.exists(multi_path):
-            with open(multi_path, 'rb') as f:
-                multi_encodings = pickle.load(f)
-                multi_encodings_dict[user_folder] = multi_encodings
+            try:
+                with open(multi_path, 'rb') as f:
+                    multi_encodings = pickle.load(f)
+                    multi_encodings_dict[user_folder] = multi_encodings
+            except:
+                pass
 
     return known_avg_encodings, known_names, multi_encodings_dict
-
-def match_face_multi(current_encoding, multi_encodings_dict, tolerance=0.42):
-    """
-    Matches against multiple encodings stored per user.
-    Returns matched name or 'Unknown'.
-    """
-    for name, encodings in multi_encodings_dict.items():
-        if not encodings:
-            continue
-        matches = face_recognition.compare_faces(encodings, current_encoding, tolerance)
-        if any(matches):
-            return name
-    return "Unknown"
