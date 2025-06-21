@@ -30,60 +30,139 @@ class RegistrationHandler:
         self.capture_interval = 1.5  # Time between captures
         self.captured_encodings = []
 
+        # UI elements for better control
+        self.pose_indicator = None
+        self.progress_label = None
+        self.pose_indicators = []
+
+        self.registration_started = False
+        self.current_name = None
+        self.current_emp_id = None
+        self.current_user_dir = None
+        self.btn_capture = None
+        self.btn_accept = None  # Store reference to start button
+
     def open_window(self):
         win = tk.Toplevel(self.app.main_window)
-        # Position relative to main window
         x = self.app.x_pos + 40
         y = self.app.y_pos + 20
-        win.geometry(f"1200x520+{x}+{y}")
+        win.geometry(f"1400x600+{x}+{y}")  # Increased size
         win.title("Register New User - 5 Pose Capture")
+        win.resizable(False, False)
+        win.configure(bg='#f0f0f0')  # Light background
 
-        # Instruction label with current pose info
+        # Main container frames
+        # Left frame for webcam
+        left_frame = tk.Frame(win, bg='#f0f0f0', relief='ridge', bd=2)
+        left_frame.place(x=10, y=10, width=750, height=520)
+
+        # Right frame for controls
+        right_frame = tk.Frame(win, bg='#ffffff', relief='ridge', bd=2)
+        right_frame.place(x=780, y=10, width=600, height=520)
+
+        # Webcam feed with border
+        webcam_title = tk.Label(left_frame, text="📹 Live Camera Feed",
+                                font=("Helvetica", 14, "bold"), bg='#f0f0f0', fg='#333333')
+        webcam_title.place(x=10, y=10)
+
+        capture_label = util.get_img_label(left_frame)
+        capture_label.place(x=20, y=40, width=700, height=460)
+        capture_label.configure(bg='black', relief='sunken', bd=2)
+
+        # Status section in right frame
+        status_title = tk.Label(right_frame, text="📊 Registration Status",
+                                font=("Helvetica", 16, "bold"), bg='#ffffff', fg='#2c3e50')
+        status_title.place(x=20, y=15)
+
+        # Current pose indicator with larger, more visible design
+        self.pose_indicator = tk.Label(right_frame, text="🎯 Ready to Start",
+                                       font=("Helvetica", 14, "bold"),
+                                       bg='#3498db', fg='white',
+                                       relief='raised', bd=3, padx=10, pady=5)
+        self.pose_indicator.place(x=20, y=50, width=560, height=40)
+
+        # Progress bar simulation
+        self.progress_frame = tk.Frame(right_frame, bg='#ffffff')
+        self.progress_frame.place(x=20, y=100, width=560, height=30)
+
+        self.progress_label = tk.Label(self.progress_frame, text="Progress: 0/5 poses completed",
+                                       font=("Helvetica", 11), bg='#ffffff', fg='#7f8c8d')
+        self.progress_label.pack(side='left')
+
+        # Visual progress indicators
+        self.pose_indicators = []
+        indicator_frame = tk.Frame(right_frame, bg='#ffffff')
+        indicator_frame.place(x=20, y=140, width=560, height=60)
+
+        pose_names = ["Front", "Left", "Right", "Up", "Down"]
+        for i, pose_name in enumerate(pose_names):
+            indicator = tk.Label(indicator_frame, text=f"{i + 1}. {pose_name}",
+                                 font=("Helvetica", 10), bg='#ecf0f1', fg='#7f8c8d',
+                                 relief='ridge', bd=1, padx=8, pady=4)
+            indicator.place(x=i * 110, y=10, width=100, height=40)
+            self.pose_indicators.append(indicator)
+
+        # User information section
+        info_title = tk.Label(right_frame, text="👤 User Information",
+                              font=("Helvetica", 14, "bold"), bg='#ffffff', fg='#2c3e50')
+        info_title.place(x=20, y=220)
+
+        # Employee ID
+        lbl_id = tk.Label(right_frame, text='Employee ID:', font=("Helvetica", 12),
+                          bg='#ffffff', fg='#34495e')
+        lbl_id.place(x=20, y=260)
+        entry_id = tk.Entry(right_frame, font=("Arial", 12), relief='ridge', bd=2, width=25)
+        entry_id.place(x=150, y=260)
+
+        # Username
+        lbl_name = tk.Label(right_frame, text='Username:', font=("Helvetica", 12),
+                            bg='#ffffff', fg='#34495e')
+        lbl_name.place(x=20, y=300)
+        entry_name = tk.Entry(right_frame, font=("Arial", 12), relief='ridge', bd=2, width=25)
+        entry_name.place(x=150, y=300)
+
+        # Instructions section
+        instructions_title = tk.Label(right_frame, text="📋 Instructions",
+                                      font=("Helvetica", 14, "bold"), bg='#ffffff', fg='#2c3e50')
+        instructions_title.place(x=20, y=350)
+
         instruction_text = (
-            "📸 POSE-BASED REGISTRATION (5 poses)\n\n"
-            "Poses to capture:\n"
-            "1. Front - Look straight at camera\n"
-            "2. Left - Turn head left\n"
-            "3. Right - Turn head right\n"
-            "4. Up - Tilt head slightly up\n"
-            "5. Down - Tilt head slightly down\n\n"
-            "⚠️ Ensure good lighting and only one face visible"
+            "1. Enter your Employee ID and Username\n"
+            "2. Click 'Start Registration' to begin\n"
+            "3. Follow the pose instructions shown above\n"
+            "4. Click 'Capture Photo' for each pose\n"
+            "5. Keep your face clearly visible\n\n"
+            "⚠️  Ensure good lighting and only one face visible"
         )
 
-        label = tk.Label(win, text=instruction_text, font=("Helvetica", 11), fg="blue", justify="left", wraplength=400,
-                         padx=10, pady=10)
-        label.place(x=720, y=300)
+        instructions_label = tk.Label(right_frame, text=instruction_text,
+                                      font=("Helvetica", 10), fg="#2c3e50", bg='#ffffff',
+                                      justify="left", anchor="nw")
+        instructions_label.place(x=20, y=380, width=540, height=100)
 
-        # Status label for current pose
-        self.status_label = tk.Label(win, text="Ready to start...", font=("Helvetica", 12, "bold"), fg="green")
-        self.status_label.place(x=720, y=250)
+        # Buttons with better styling
+        self.btn_accept = tk.Button(right_frame, text='🚀 Start Registration',
+                                    font=("Helvetica", 12, "bold"), bg='#27ae60', fg='white',
+                                    relief='raised', bd=3, padx=20, pady=8,
+                                    activebackground='#229954', activeforeground='white',
+                                    command=lambda: self.accept(win, entry_name, entry_id))
+        self.btn_accept.place(x=50, y=490)
 
-        # Progress label
-        self.progress_label = tk.Label(win, text="Progress: 0/5", font=("Helvetica", 12), fg="purple")
-        self.progress_label.place(x=720, y=270)
+        # NEW: Capture Photo Button (initially hidden)
+        self.btn_capture = tk.Button(right_frame, text='📸 Capture Photo',
+                                     font=("Helvetica", 12, "bold"), bg='#f39c12', fg='white',
+                                     relief='raised', bd=3, padx=20, pady=8,
+                                     activebackground='#e67e22', activeforeground='white',
+                                     command=self.capture_current_pose)
+        # Initially place it off-screen (will be moved when registration starts)
+        self.btn_capture.place(x=-200, y=490)
 
-        # Video feed label - REUSE existing webcam, don't start new one
-        capture_label = util.get_img_label(win)
-        capture_label.place(x=10, y=0, width=700, height=500)
-
-        # Entries
-        x_label, x_entry = 750, 900
-        lbl_id = util.get_text_label(win, 'Emp ID:')
-        lbl_id.config(font=("sans-serif", 14))
-        lbl_id.place(x=x_label, y=40)
-        entry_id = util.get_entry_text(win)
-        entry_id.place(x=x_entry, y=40)
-
-        lbl_name = util.get_text_label(win, 'Username:')
-        lbl_name.config(font=("sans-serif", 14))
-        lbl_name.place(x=x_label, y=100)
-        entry_name = util.get_entry_text(win)
-        entry_name.place(x=x_entry, y=100)
-
-        btn_accept = util.get_button(win, 'Start Capture', 'green', lambda: self.accept(win, entry_name, entry_id))
-        btn_accept.place(x=850, y=180)
-        btn_try = util.get_button(win, 'Cancel', 'red', lambda: self.close_window(win))
-        btn_try.place(x=850, y=300)
+        btn_cancel = tk.Button(right_frame, text='❌ Cancel',
+                               font=("Helvetica", 12, "bold"), bg='#e74c3c', fg='white',
+                               relief='raised', bd=3, padx=20, pady=8,
+                               activebackground='#c0392b', activeforeground='white',
+                               command=lambda: self.close_window(win))
+        btn_cancel.place(x=450, y=490)
 
         # Store references
         self.win = win
@@ -91,8 +170,9 @@ class RegistrationHandler:
         self.entry_id = entry_id
         self.capture_label = capture_label
         self.running = True
+        self.registration_started = False
 
-        # Start update feed using existing webcam
+        # Start webcam feed
         self._update_feed()
 
     def _update_feed(self):
@@ -144,70 +224,93 @@ class RegistrationHandler:
         # Reset capture state
         self.current_pose_index = 0
         self.captured_encodings = []
+        self.registration_started = True
+        self.current_name = name
+        self.current_emp_id = emp_id
+        self.current_user_dir = user_dir
 
-        # Start capture thread
-        threading.Thread(target=self._capture_poses, args=(name, emp_id, user_dir)).start()
+        # Hide start button and show capture button using stored reference
+        self.btn_accept.place(x=-200, y=490)  # Hide start button
+        self.btn_capture.place(x=250, y=490)  # Show capture button
 
-    def _capture_poses(self, name, emp_id, user_dir):
-        for pose_idx, pose in enumerate(self.poses):
-            # Update status
-            self.win.after(0, lambda p=pose, i=pose_idx: self.status_label.config(
-                text=f"Pose {i + 1}/5: {p['instruction']}"
-            ))
-            self.win.after(0, lambda i=pose_idx: self.progress_label.config(
-                text=f"Progress: {i}/5"
-            ))
+        # Disable entry fields
+        entry_name.config(state='disabled')
+        entry_id.config(state='disabled')
 
-            # Wait for user to position
-            time.sleep(2)
+        # Show first pose instruction
+        self.update_pose_indicator(0, "active")
 
-            # Capture this pose
-            attempts = 0
-            max_attempts = 10
+    def capture_current_pose(self):
+        """NEW METHOD: Capture photo for current pose when button is clicked"""
+        if not self.registration_started:
+            return
 
-            while attempts < max_attempts:
-                frame = self.app.webcam.get_latest_frame()
-                if frame is None:
-                    time.sleep(0.1)
-                    attempts += 1
-                    continue
+        if self.current_pose_index >= len(self.poses):
+            util.msg_box("Error", "All poses have been captured!")
+            return
 
-                face_locations = face_recognition.face_locations(frame)
-                if len(face_locations) != 1:
-                    self.win.after(0, lambda: self.status_label.config(
-                        text="Ensure only one face is visible"
-                    ))
-                    time.sleep(0.5)
-                    attempts += 1
-                    continue
+        # Get current frame
+        frame = self.app.webcam.get_latest_frame()
+        if frame is None:
+            util.msg_box("Error", "Unable to capture frame. Please try again.")
+            return
 
-                # Good frame - save it
-                pose_name = pose['name'].lower()
-                img_path = os.path.join(user_dir, f'{pose_name}.jpg')
-                cv2.imwrite(img_path, frame)
+        # Check for face
+        face_locations = face_recognition.face_locations(frame)
 
-                # Extract encoding
-                face_encs = face_recognition.face_encodings(frame, face_locations)
-                if face_encs:
-                    self.captured_encodings.append(face_encs[0])
-                    # Save individual encoding
-                    with open(os.path.join(user_dir, f'{pose_name}_encoding.pkl'), 'wb') as f:
-                        pickle.dump(face_encs[0], f)
+        if len(face_locations) == 0:
+            util.msg_box("Error", "No face detected. Please position yourself in front of camera and try again.")
+            return
+        elif len(face_locations) > 1:
+            util.msg_box("Error", "Multiple faces detected. Ensure only one person is visible and try again.")
+            return
 
-                self.win.after(0, lambda p=pose: self.status_label.config(
-                    text=f"✅ {p['name']} captured!"
-                ))
-                break
+        # Show capturing feedback
+        current_pose = self.poses[self.current_pose_index]
+        self.pose_indicator.config(
+            text=f"📸 Capturing {current_pose['name']} pose...",
+            bg='#3498db', fg='white'
+        )
+        self.win.update()  # Force UI update
 
-            time.sleep(self.capture_interval)
+        # Capture and save
+        try:
+            # Save the image
+            pose_name = current_pose['name'].lower()
+            img_path = os.path.join(self.current_user_dir, f'{pose_name}.jpg')
+            cv2.imwrite(img_path, frame)
 
-        # Save all data
-        self._save_user_data(name, emp_id, user_dir)
+            # Extract encoding
+            face_encs = face_recognition.face_encodings(frame, face_locations)
+            if face_encs:
+                self.captured_encodings.append(face_encs[0])
+                # Save individual encoding
+                with open(os.path.join(self.current_user_dir, f'{pose_name}_encoding.pkl'), 'wb') as f:
+                    pickle.dump(face_encs[0], f)
 
-    def _save_user_data(self, name, emp_id, user_dir):
-        # Update progress
-        self.win.after(0, lambda: self.status_label.config(text="Saving data..."))
-        self.win.after(0, lambda: self.progress_label.config(text="Progress: 5/5 - Complete!"))
+            # Show success feedback
+            self.update_pose_indicator(self.current_pose_index, "captured")
+
+            # Move to next pose
+            self.current_pose_index += 1
+
+            if self.current_pose_index < len(self.poses):
+                # Show next pose after brief delay
+                self.win.after(1000, lambda: self.update_pose_indicator(self.current_pose_index, "active"))
+            else:
+                # All poses captured, save data
+                self.btn_capture.config(state='disabled', text='✅ All Photos Captured')
+                self.win.after(1000, self._save_user_data_manual)
+
+        except Exception as e:
+            util.msg_box("Error", f"Failed to capture photo: {str(e)}")
+            # Reset the pose indicator
+            self.update_pose_indicator(self.current_pose_index, "active")
+
+    def _save_user_data_manual(self):
+        """NEW METHOD: Save user data after manual capture"""
+        # Show saving progress
+        self.update_pose_indicator(0, "saving")
 
         # Save user to users.json
         users_file = os.path.join(self.app.db_dir, 'users.json')
@@ -216,24 +319,90 @@ class RegistrationHandler:
                 users_data = json.load(f)
         except:
             users_data = {}
-        users_data[name] = emp_id
+
+        users_data[self.current_name] = self.current_emp_id
         with open(users_file, 'w') as f:
             json.dump(users_data, f, indent=4)
 
         # Calculate and save average encoding
         if self.captured_encodings:
             avg_encoding = np.mean(self.captured_encodings, axis=0)
-            with open(os.path.join(user_dir, 'avg_encoding.pkl'), 'wb') as f:
+            with open(os.path.join(self.current_user_dir, 'avg_encoding.pkl'), 'wb') as f:
                 pickle.dump(avg_encoding, f)
 
         # Save multi encodings
-        with open(os.path.join(user_dir, 'multi_encodings.pkl'), 'wb') as f:
+        with open(os.path.join(self.current_user_dir, 'multi_encodings.pkl'), 'wb') as f:
             pickle.dump(self.captured_encodings, f)
 
         # Reload in recognition handler
         self.recognition.reload_known_faces()
 
-        # Notify success
-        self.win.after(0, lambda: util.msg_box('Success!',
-                                               f'User {name} with ID {emp_id} registered successfully with 5 pose captures!'))
-        self.win.after(0, lambda: self.close_window(self.win))
+        # Show completion
+        self.update_pose_indicator(0, "complete")
+
+        # Show success message with more details
+        success_message = (
+            f"🎉 Registration Successful!\n\n"
+            f"User: {self.current_name}\n"
+            f"Employee ID: {self.current_emp_id}\n"
+            f"Poses Captured: 5/5\n\n"
+            f"You can now use the system for attendance tracking."
+        )
+
+        util.msg_box('Registration Complete!', success_message)
+        self.close_window(self.win)
+
+    def update_pose_indicator(self, pose_index, status):
+        """Update the pose indicator and progress display"""
+        if status == "active":
+            # Show current pose instruction
+            if pose_index < len(self.poses):
+                current_pose = self.poses[pose_index]
+                self.pose_indicator.config(
+                    text=f"🎯 {current_pose['instruction']}",
+                    bg='#f39c12', fg='white'
+                )
+
+                # Update progress
+                self.progress_label.config(text=f"Progress: {pose_index}/5 poses completed")
+
+                # Update pose indicator visuals
+                for i, indicator in enumerate(self.pose_indicators):
+                    if i == pose_index:
+                        indicator.config(bg='#3498db', fg='white')  # Current pose
+                    elif i < pose_index:
+                        indicator.config(bg='#27ae60', fg='white')  # Completed
+                    else:
+                        indicator.config(bg='#ecf0f1', fg='#7f8c8d')  # Not started
+
+        elif status == "captured":
+            # Show success for captured pose
+            current_pose = self.poses[pose_index]
+            self.pose_indicator.config(
+                text=f"✅ {current_pose['name']} pose captured successfully!",
+                bg='#27ae60', fg='white'
+            )
+
+            # Update progress
+            self.progress_label.config(text=f"Progress: {pose_index + 1}/5 poses completed")
+
+            # Update indicator to green
+            if pose_index < len(self.pose_indicators):
+                self.pose_indicators[pose_index].config(bg='#27ae60', fg='white')
+
+        elif status == "saving":
+            self.pose_indicator.config(
+                text="💾 Saving registration data...",
+                bg='#9b59b6', fg='white'
+            )
+
+        elif status == "complete":
+            self.pose_indicator.config(
+                text="🎉 Registration completed successfully!",
+                bg='#27ae60', fg='white'
+            )
+            self.progress_label.config(text="Progress: 5/5 poses completed - DONE!")
+
+            # Mark all indicators as complete
+            for indicator in self.pose_indicators:
+                indicator.config(bg='#27ae60', fg='white')

@@ -25,8 +25,12 @@ class App:
         # Initialize DB and logging
         self.db_dir = "face_db"
         os.makedirs(self.db_dir, exist_ok=True)
+       # util.debug_face_db(self.db_dir)  # Debug line - remove after fixing
         self.users_file_path = os.path.join(self.db_dir, 'users.json')
-        if not os.path.exists(self.users_file_path) or os.path.getsize(self.users_file_path) == 0:
+        if not os.path.exists(self.users_file_path):
+            with open(self.users_file_path, 'w') as f:
+                json.dump({}, f)
+        elif os.path.getsize(self.users_file_path) == 0:
             with open(self.users_file_path, 'w') as f:
                 json.dump({}, f)
         self.log_path = './log.txt'
@@ -35,7 +39,9 @@ class App:
 
         # Load known faces
         known_encodings, known_names, multi_encodings_dict = util.load_known_faces(self.db_dir)
-        self.recognition_handler = RecognitionHandler(self.db_dir, known_encodings, multi_encodings_dict)
+        print(f"Loaded {len(known_names)} known faces: {known_names}")  # Debug line
+        self.recognition_handler = RecognitionHandler(self.db_dir, known_encodings, known_names, multi_encodings_dict)
+
         # Webcam manager
         self.webcam = WebcamManager()
 
@@ -78,6 +84,9 @@ class App:
         if hasattr(self, 'label_emp_id'):
             self.label_emp_id.destroy()
             del self.label_emp_id
+        if hasattr(self, 'label_status'):
+            self.label_status.destroy()
+            del self.label_status
 
     def on_closing(self):
         self.timer_manager.stop()
