@@ -32,6 +32,10 @@ class LogoutHandler:
             f.write(f'{name},{emp_id},{datetime.datetime.now()},out\n')
         if emp_id in self.app.logged_in_emp_ids:
             self.app.logged_in_emp_ids.remove(emp_id)
+
+        # Reset anti-spoofing tracking on logout
+        self.recognition.reset_anti_spoofing()
+
         self.app.timer_manager.stop()
         self.app.current_user = None
         self.app.reset_ui_after_logout()
