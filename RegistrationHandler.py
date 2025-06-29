@@ -42,6 +42,81 @@ class RegistrationHandler:
         self.btn_capture = None
         self.btn_accept = None  # Store reference to start button
 
+    def check_face_already_registered(self, test_frame, tolerance=0.32):
+        """
+        Check if the face in the test frame is already registered in the system
+        Returns: (is_duplicate, existing_user_name, existing_emp_id) or (False, None, None)
+        """
+        try:
+            # Extract face encoding from test frame
+            rgb_frame = cv2.cvtColor(test_frame, cv2.COLOR_BGR2RGB)
+            face_locations = face_recognition.face_locations(rgb_frame)
+
+            if len(face_locations) == 0:
+                return False, None, None, "No face detected"
+            elif len(face_locations) > 1:
+                return False, None, None, "Multiple faces detected"
+
+            test_encodings = face_recognition.face_encodings(rgb_frame, face_locations)
+            if not test_encodings:
+                return False, None, None, "Could not extract face encoding"
+
+            test_encoding = test_encodings[0]
+
+            # Load users data to get name-empid mapping
+            users_file = os.path.join(self.app.db_dir, 'users.json')
+            users_data = {}
+            if os.path.exists(users_file):
+                with open(users_file, 'r') as f:
+                    try:
+                        users_data = json.load(f)
+                    except json.JSONDecodeError:
+                        users_data = {}
+
+            # Check against all registered users
+            for user_folder in os.listdir(self.app.db_dir):
+                user_path = os.path.join(self.app.db_dir, user_folder)
+                if not os.path.isdir(user_path) or user_folder.endswith('.json'):
+                    continue
+
+                # Try to load average encoding first
+                avg_encoding_path = os.path.join(user_path, 'avg_encoding.pkl')
+                if os.path.exists(avg_encoding_path):
+                    try:
+                        with open(avg_encoding_path, 'rb') as f:
+                            existing_encoding = pickle.load(f)
+
+                        # Compare faces
+                        face_distance = face_recognition.face_distance([existing_encoding], test_encoding)[0]
+
+                        if face_distance < tolerance:
+                            emp_id = users_data.get(user_folder, "Unknown")
+                            return True, user_folder, emp_id, None
+
+                    except Exception as e:
+                        print(f"Error loading encoding for {user_folder}: {e}")
+
+                # Also check against multi-encodings for more accuracy
+                multi_encoding_path = os.path.join(user_path, 'multi_encodings.pkl')
+                if os.path.exists(multi_encoding_path):
+                    try:
+                        with open(multi_encoding_path, 'rb') as f:
+                            multi_encodings = pickle.load(f)
+
+                        # Check against all multi-encodings
+                        matches = face_recognition.compare_faces(multi_encodings, test_encoding, tolerance=tolerance)
+                        if any(matches):
+                            emp_id = users_data.get(user_folder, "Unknown")
+                            return True, user_folder, emp_id, None
+
+                    except Exception as e:
+                        print(f"Error loading multi-encodings for {user_folder}: {e}")
+
+            return False, None, None, None
+
+        except Exception as e:
+            return False, None, None, f"Error during face comparison: {str(e)}"
+
     def open_window(self):
         win = tk.Toplevel(self.app.main_window)
         x = self.app.x_pos + 40
@@ -132,7 +207,8 @@ class RegistrationHandler:
             "3. Follow the pose instructions shown above\n"
             "4. Click 'Capture Photo' for each pose\n"
             "5. Keep your face clearly visible\n\n"
-            "⚠️  Ensure good lighting and only one face visible"
+            "⚠️  Ensure good lighting and only one face visible\n"
+            "⚠️  Face verification will check for duplicates"
         )
 
         instructions_label = tk.Label(right_frame, text=instruction_text,
@@ -216,6 +292,56 @@ class RegistrationHandler:
         if emp_id in users_data.values():
             util.msg_box("Error", f"Emp ID '{emp_id}' is already registered!")
             return
+
+        # NEW: Check if face is already registered
+        self.pose_indicator.config(
+            text="🔍 Checking for face duplicates...",
+            bg='#f39c12', fg='white'
+        )
+        self.win.update()  # Force UI update
+
+        current_frame = self.app.webcam.get_latest_frame()
+        if current_frame is None:
+            util.msg_box("Error", "Unable to capture frame for verification. Please try again.")
+            self.pose_indicator.config(
+                text="🎯 Ready to Start",
+                bg='#3498db', fg='white'
+            )
+            return
+
+        is_duplicate, existing_name, existing_emp_id, error_msg = self.check_face_already_registered(current_frame)
+
+        if error_msg:
+            util.msg_box("Error", f"Face verification failed: {error_msg}")
+            self.pose_indicator.config(
+                text="🎯 Ready to Start",
+                bg='#3498db', fg='white'
+            )
+            return
+
+        if is_duplicate:
+            duplicate_message = (
+                f"❌ Face Already Registered!\n\n"
+                f"This person is already registered in the system:\n\n"
+                f"Existing Username: {existing_name}\n"
+                f"Existing Employee ID: {existing_emp_id}\n\n"
+                f"Each person can only register once in the system.\n"
+                f"If you need to update your information, please contact your administrator."
+            )
+            util.msg_box("Registration Denied", duplicate_message)
+            self.pose_indicator.config(
+                text="❌ Face already registered",
+                bg='#e74c3c', fg='white'
+            )
+            return
+
+        # If we reach here, face is not duplicate - proceed with registration
+        self.pose_indicator.config(
+            text="✅ Face verification passed",
+            bg='#27ae60', fg='white'
+        )
+        self.win.update()
+        time.sleep(1)  # Brief pause to show success
 
         # Create user directory
         user_dir = os.path.join(self.app.db_dir, name)

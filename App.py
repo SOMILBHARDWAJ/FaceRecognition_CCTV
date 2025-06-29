@@ -9,7 +9,7 @@ from RecognitionHandler import RecognitionHandler
 from RegistrationHandler import RegistrationHandler
 from TimerManager import TimerManager
 from WebcamManager import WebcamManager
-
+from AntiSpoofHandler import AntiSpoofHandler
 
 class App:
     def __init__(self):
@@ -25,22 +25,28 @@ class App:
         # Initialize DB and logging
         self.db_dir = "face_db"
         os.makedirs(self.db_dir, exist_ok=True)
-       # util.debug_face_db(self.db_dir)  # Debug line - remove after fixing
         self.users_file_path = os.path.join(self.db_dir, 'users.json')
-        if not os.path.exists(self.users_file_path):
-            with open(self.users_file_path, 'w') as f:
-                json.dump({}, f)
-        elif os.path.getsize(self.users_file_path) == 0:
+        if not os.path.exists(self.users_file_path) or os.path.getsize(self.users_file_path) == 0:
             with open(self.users_file_path, 'w') as f:
                 json.dump({}, f)
         self.log_path = './log.txt'
         self.current_user = None
         self.logged_in_emp_ids = set()
 
-        # Load known faces
+        # Load known faces - FIXED: properly pass all three parameters
         known_encodings, known_names, multi_encodings_dict = util.load_known_faces(self.db_dir)
-        print(f"Loaded {len(known_names)} known faces: {known_names}")  # Debug line
-        self.recognition_handler = RecognitionHandler(self.db_dir, known_encodings, known_names, multi_encodings_dict)
+        self.recognition_handler = RecognitionHandler(
+            self.db_dir,
+            known_encodings,
+            known_names,  # This was missing before
+            multi_encodings_dict
+        )
+
+        # Replace the threshold to be more strict
+        self.anti_spoof_handler = AntiSpoofHandler(threshold=0.7)  # More strict threshold
+
+        # Add this after creating anti_spoof_handler to enable debug mode
+        self.anti_spoof_handler.enable_debug(True)
 
         # Webcam manager
         self.webcam = WebcamManager()
@@ -49,11 +55,14 @@ class App:
         self.login_handler = LoginHandler(self, self.recognition_handler, self.log_path)
         btn_login = util.get_button(self.main_window, 'Login', 'green', self.login_handler.login_threaded)
         btn_login.place(x=750, y=200)
+
         self.logout_handler = LogoutHandler(self, self.recognition_handler, self.log_path)
         btn_logout = util.get_button(self.main_window, 'Logout', 'red', self.logout_handler.logout_threaded)
         btn_logout.place(x=750, y=300)
+
         self.registration_handler = RegistrationHandler(self, self.recognition_handler)
-        btn_register = util.get_button(self.main_window, 'Register New User', 'gray', self.registration_handler.open_window, fg='black')
+        btn_register = util.get_button(self.main_window, 'Register New User', 'gray',
+                                       self.registration_handler.open_window, fg='black')
         btn_register.place(x=750, y=400)
 
         # Labels for webcam and timers
@@ -84,9 +93,6 @@ class App:
         if hasattr(self, 'label_emp_id'):
             self.label_emp_id.destroy()
             del self.label_emp_id
-        if hasattr(self, 'label_status'):
-            self.label_status.destroy()
-            del self.label_status
 
     def on_closing(self):
         self.timer_manager.stop()

@@ -13,6 +13,7 @@ class LogoutHandler:
             util.msg_box("Error", "No user is currently logged in.")
             return
         frame = self.app.webcam.get_latest_frame()
+
         status, name_or_id = self.recognition.recognize_face(frame)
         if status in ['no_persons_found', 'multiple_faces_detected', 'unknown_person']:
             msg = {
@@ -32,14 +33,9 @@ class LogoutHandler:
             f.write(f'{name},{emp_id},{datetime.datetime.now()},out\n')
         if emp_id in self.app.logged_in_emp_ids:
             self.app.logged_in_emp_ids.remove(emp_id)
-
-        # Reset anti-spoofing tracking on logout
-        self.recognition.reset_anti_spoofing()
-
         self.app.timer_manager.stop()
         self.app.current_user = None
         self.app.reset_ui_after_logout()
 
     def logout_threaded(self):
         threading.Thread(target=self.logout).start()
-
